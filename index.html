@@ -18,7 +18,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,500&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,500&family=Baloo+2:wght@600;700;800&family=Pacifico&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap');
 
   :root{
     --navy: #16233B; --navy-deep: #101A2C; --navy-light: #24365A;
@@ -35,7 +35,7 @@
 
   .sidebar{ width:220px; flex-shrink:0; background: linear-gradient(180deg, var(--navy) 0%, var(--navy-deep) 100%); border-right: 1px solid var(--line); padding: 28px 18px; display:flex; flex-direction:column; }
   .brand-row{ display:flex; align-items:center; gap:8px; margin-bottom:2px; }
-  .brand{ font-family:'Fraunces', serif; font-size:20px; font-weight:600; color:var(--gold-bright); letter-spacing:0.3px; line-height:1.25; }
+  .brand{ font-family:'Pacifico', cursive; font-size:19px; font-weight:400; color:var(--gold-bright); letter-spacing:0.3px; line-height:1.35; }
   .sprig{ flex-shrink:0; opacity:0.85; }
   .brand-sub{ font-size:11px; color:var(--blush-bright); opacity:0.75; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:26px; font-style:italic; font-family:'Fraunces', serif; }
   .nav-item{ display:flex; align-items:center; gap:10px; padding:11px 14px; border-radius:8px; color:var(--cream-dim); font-size:14px; cursor:pointer; margin-bottom:4px; border-left: 2px solid transparent; transition:all 0.15s; }
@@ -49,7 +49,7 @@
   .save-indicator.show{ opacity:0.85; }
 
   .main{ flex:1; padding:36px 44px; max-width:1020px; }
-  .page-title{ font-family:'Fraunces', serif; font-size:27px; font-weight:600; color:var(--cream); margin:0; }
+  .page-title{ font-family:'Baloo 2', cursive; font-size:29px; font-weight:700; color:var(--cream); margin:0; }
   .title-flourish{ width:60px; height:10px; opacity:0.7; margin:8px 0 6px 0; }
   .page-sub{ color:var(--cream-dim); opacity:0.6; font-size:13px; margin-bottom:26px; font-style:italic; font-family:'Fraunces', serif; }
 
@@ -105,8 +105,8 @@
   tr:hover td{ background:rgba(217,166,160,0.08); }
 
   .empty{ text-align:center; padding:30px 10px; color:var(--ink-soft); font-size:13px; }
-  .anything-box{ display:grid; grid-template-columns: repeat(4, 1fr); gap:14px; }
-  .anything-pair{ display:grid; grid-template-columns: 1fr 1fr; gap:18px; }
+  .anything-box{ display:grid; grid-template-columns: repeat(2, 1fr); gap:12px; }
+  .anything-pair{ display:grid; grid-template-columns: 1fr 1fr; gap:20px; }
   .hint{ font-size:12px; color:var(--ink-soft); margin-top:4px; }
 
   .limit-rows{ display:flex; flex-direction:column; gap:10px; }
@@ -122,7 +122,7 @@
 
   .gate-wrap{ min-height:100vh; display:flex; align-items:center; justify-content:center; background: radial-gradient(circle at 30% 20%, var(--navy-light), var(--navy-deep) 70%); padding:20px; }
   .gate-card{ background: var(--cream); color: var(--ink); border-radius:16px; padding:38px 36px; max-width:400px; width:100%; text-align:center; box-shadow: 0 20px 60px -20px rgba(0,0,0,0.5); }
-  .gate-title{ font-family:'Fraunces', serif; font-size:24px; font-weight:600; margin-bottom:8px; }
+  .gate-title{ font-family:'Pacifico', cursive; font-size:26px; font-weight:400; margin-bottom:10px; }
   .gate-sub{ font-size:13.5px; color:var(--ink-soft); margin-bottom:24px; line-height:1.5; }
   .google-btn{ width:100%; background:#fff; color:#3c4043; border:1px solid rgba(0,0,0,0.2); padding:11px; border-radius:8px; font-weight:600; font-size:14px; display:flex; align-items:center; justify-content:center; gap:10px; }
   .google-btn:hover{ box-shadow:0 1px 4px rgba(0,0,0,0.2); }
@@ -183,6 +183,18 @@ const CATEGORIES = [
   { id:'anything', label:'Anything', color:'#DDBB6E' },
 ];
 const catById = id => CATEGORIES.find(c => c.id === id);
+function categoriesByUsage(person){
+  const counts = {};
+  appData.entries.forEach(e=>{
+    if(person && person !== 'combined' && e.person !== person && e.person !== BOTH) return;
+    counts[e.category] = (counts[e.category]||0) + 1;
+  });
+  return [...CATEGORIES].sort((a,b)=>{
+    const ca = counts[a.id]||0, cb = counts[b.id]||0;
+    if(cb !== ca) return cb - ca;
+    return a.label.localeCompare(b.label);
+  });
+}
 const NON_ANYTHING_CATS = CATEGORIES.filter(c => c.id !== 'anything');
 const BOTH = 'Both';
 
@@ -504,7 +516,7 @@ function render(){
     else if(ui.tab==='monthly'){ const {node, post} = buildMonthly(); main.appendChild(node); post(); }
     else if(ui.tab==='yearly'){ const {node, post} = buildYearly(); main.appendChild(node); post(); }
     else if(ui.tab==='income'){ main.appendChild(buildIncome()); }
-    else if(ui.tab==='budgets'){ main.appendChild(buildBudgets()); }
+    else if(ui.tab==='budgets'){ const {node, post} = buildBudgets(); main.appendChild(node); post(); }
     else if(ui.tab==='settings'){ main.appendChild(buildSettings()); }
   }catch(err){
     console.error('Render error', err);
@@ -532,7 +544,7 @@ function buildAdd(){
             <option value="${BOTH}">Both</option>
           </select>
         </div>
-        <div><label>Category</label><select id="f-category">${CATEGORIES.map(c=>`<option value="${c.id}">${c.label}</option>`).join('')}</select></div>
+        <div><label>Category</label><select id="f-category"></select></div>
         <div><label>Amount</label><input id="f-amount" type="number" step="0.01" min="0" placeholder="0.00"></div>
         <div><label>Date</label><input id="f-date" type="date" value="${todayISO()}"></div>
         <div class="full"><label>Note (optional)</label><input id="f-note" type="text" placeholder="e.g. Trader Joe's run"></div>
@@ -541,6 +553,16 @@ function buildAdd(){
     </div>
     <div class="card"><div class="card-title">Recent entries</div><div id="recent-table"></div></div>
   </div>`);
+
+  const personSelect = wrap.querySelector('#f-person');
+  const categorySelect = wrap.querySelector('#f-category');
+  function refreshCategoryOptions(){
+    const prev = categorySelect.value;
+    categorySelect.innerHTML = categoriesByUsage(personSelect.value).map(c=>`<option value="${c.id}">${c.label}</option>`).join('');
+    if(prev && CATEGORIES.some(c=>c.id===prev)) categorySelect.value = prev;
+  }
+  personSelect.addEventListener('change', refreshCategoryOptions);
+  refreshCategoryOptions();
 
   wrap.querySelector('#f-submit').addEventListener('click', ()=>{
     const person = wrap.querySelector('#f-person').value;
@@ -737,11 +759,50 @@ function buildIncome(){
 }
 
 // ---------- Budgets tab ----------
+function incomeAllocationSegments(){
+  const s = appData.settings;
+  const income = incomeFor();
+  const segments = NON_ANYTHING_CATS
+    .map(c=>({label:c.label, value:Number(s.categoryBudgets[c.id])||0, color:c.color}))
+    .filter(seg=>seg.value>0);
+  const anythingTotal = (Number(s.anythingBudgets[s.name1])||0) + (Number(s.anythingBudgets[s.name2])||0);
+  if(anythingTotal>0) segments.push({label:'Anything (combined)', value:anythingTotal, color: catById('anything').color});
+  const allocated = segments.reduce((a,b)=>a+b.value,0);
+  const unassigned = Math.max(income - allocated, 0);
+  const withUnassigned = unassigned>0 ? segments.concat([{label:'Unassigned', value:unassigned, color:'#DED2B4'}]) : segments;
+  return { segments: withUnassigned, income, allocated, overIncome: allocated>income && income>0 };
+}
+function drawAllocationChart(canvas, segments, denom){
+  if(!canvas) return;
+  const id = canvas.id;
+  if(chartInstances[id]){ chartInstances[id].destroy(); delete chartInstances[id]; }
+  if(segments.length===0) return;
+  chartInstances[id] = new Chart(canvas, {
+    type:'doughnut',
+    data:{ labels: segments.map(s=>s.label), datasets:[{ data: segments.map(s=>s.value), backgroundColor: segments.map(s=>s.color), borderColor:'#F8F3E9', borderWidth:2 }] },
+    options:{ responsive:true, maintainAspectRatio:false, cutout:'62%',
+      plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label: ctx => `${ctx.label}: ${fmt(ctx.parsed)}${denom>0 ? ' ('+Math.round(ctx.parsed/denom*1000)/10+'%)':''}` } } } }
+  });
+}
+function allocationLegendHTML(segments, denom){
+  if(segments.length===0) return '<div class="empty">Set an income and some budgets above to see this chart.</div>';
+  return segments.map(s=>{
+    const pct = denom>0 ? Math.round(s.value/denom*1000)/10 : 0;
+    return `<div class="legend-item"><div class="legend-left"><span class="swatch" style="background:${s.color}"></span><span class="legend-cat">${s.label}</span></div><span class="legend-amt">${fmt(s.value)} · ${pct}%</span></div>`;
+  }).join('');
+}
+
 function buildBudgets(){
   const s = appData.settings;
   const wrap = el(`<div>
     <div class="page-title">Budgets</div>${flourishSVG()}
     <div class="page-sub">Set monthly spending targets. Monthly and Yearly views compare actual spending against these automatically.</div>
+    <div class="card">
+      <div class="card-title">Where your income goes</div>
+      <div id="b-stats" class="stat-row"></div>
+      <div class="chart-row"><div class="chart-wrap"><canvas id="b-chart"></canvas></div><div class="legend" id="b-legend"></div></div>
+      <div class="hint">Unassigned income (shown in tan) is whatever's left after every category and allowance budget below is subtracted from combined monthly income.</div>
+    </div>
     <div class="card">
       <div class="card-title">Category budgets</div>
       <div class="form-grid three" id="cat-budget-inputs">
@@ -768,14 +829,31 @@ function buildBudgets(){
       appData.settings.categoryBudgets[inp.dataset.cat] = isNaN(v) ? null : v;
     });
     saveData();
+    render();
   });
   wrap.querySelector('#any-save').addEventListener('click', ()=>{
     appData.settings.anythingBudgets[s.name1] = parseFloat(wrap.querySelector('#any-1').value) || 0;
     appData.settings.anythingBudgets[s.name2] = parseFloat(wrap.querySelector('#any-2').value) || 0;
     appData.settings.startMonth = wrap.querySelector('#any-start').value || thisMonth();
     saveData();
+    render();
   });
-  return wrap;
+
+  function post(){
+    const { segments, income, allocated, overIncome } = incomeAllocationSegments();
+    const denom = Math.max(income, allocated);
+    const pctAllocated = income>0 ? Math.round(allocated/income*1000)/10 : null;
+    wrap.querySelector('#b-stats').innerHTML = `
+      <div class="stat"><div class="stat-label">Combined income</div><div class="stat-value">${fmt(income)}</div></div>
+      <div class="stat ${overIncome?'over':''}"><div class="stat-label">Total budgeted</div><div class="stat-value ${overIncome?'over':''}">${fmt(allocated)}</div></div>
+      <div class="stat"><div class="stat-label">Unassigned</div><div class="stat-value good">${fmt(Math.max(income-allocated,0))}</div></div>
+      <div class="stat"><div class="stat-label">% of income budgeted</div><div class="stat-value ${overIncome?'over':'good'}">${pctAllocated!==null ? pctAllocated+'%' : '—'}</div></div>
+    `;
+    drawAllocationChart(wrap.querySelector('#b-chart'), segments, denom);
+    wrap.querySelector('#b-legend').innerHTML = allocationLegendHTML(segments, denom);
+  }
+
+  return { node: wrap, post };
 }
 
 // ---------- Settings tab ----------
