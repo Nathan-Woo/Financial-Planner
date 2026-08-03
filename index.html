@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ledger — Joint Finance Tracker</title>
+
+<!-- PWA / "Add to Home Screen" support for iPhone -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#101A2C">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ledger">
+<link rel="apple-touch-icon" href="icon.png">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<!-- Firebase (free real-time database) — lets the ledger sync between any browser or phone -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,500&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap');
+
+  :root{
+    --navy: #16233B;
+    --navy-deep: #101A2C;
+    --navy-light: #24365A;
+    --gold: #C9A44C;
+    --gold-bright: #E0BC66;
+    --blush: #D9A6A0;
+    --blush-bright: #E7BEB8;
+    --blush-deep: #A8726C;
+    --cream: #F8F3E9;
+    --cream-dim: #EFE6D3;
+    --ink: #2A2118;
+    --ink-soft: #6b6252;
+    --line: rgba(201,164,76,0.25);
+    --good: #5B8C77;
+    --warn: #B5673E;
+    --danger: #A8433D;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:'Inter', sans-serif;
+    background: var(--navy-deep);
+    color: var(--cream);
+    min-height:100vh;
+  }
+  .app{ display:flex; min-height:100vh; }
+
+  .sidebar{
+    width:220px;
+    flex-shrink:0;
+    background: linear-gradient(180deg, var(--navy) 0%, var(--navy-deep) 100%);
+    border-right: 1px solid var(--line);
+    padding: 28px 18px;
+    display:flex;
+    flex-direction:column;
+    position:relative;
+  }
+  .brand-row{ display:flex; align-items:center; gap:8px; margin-bottom:2px; }
+  .brand{
+    font-family:'Fraunces', serif;
+    font-size:22px;
+    font-weight:600;
+    color:var(--gold-bright);
+    letter-spacing:0.5px;
+  }
+  .sprig{ flex-shrink:0; opacity:0.85; }
+  .brand-sub{
+    font-size:11px;
+    color:var(--blush-bright);
+    opacity:0.75;
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+    margin-bottom:30px;
+    font-style:italic;
+    font-family:'Fraunces', serif;
+  }
+  .nav-item{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:11px 14px;
+    border-radius:8px;
+    color:var(--cream-dim);
+    font-size:14px;
+    cursor:pointer;
+    margin-bottom:4px;
+    border:1px solid transparent;
+    border-left: 2px solid transparent;
+    transition:all 0.15s;
+  }
+  .nav-item:hover{ background:rgba(217,166,160,0.06); }
+  .nav-item.active{
+    background: linear-gradient(90deg, rgba(201,164,76,0.14), rgba(217,166,160,0.06));
+    border-left: 2px solid var(--blush);
+    color: var(--gold-bright);
+  }
+  .nav-icon{ width:16px; text-align:center; font-size:14px; }
+  .sidebar-footer{
+    margin-top:auto;
+    font-size:11px;
+    color:var(--cream-dim);
+    opacity:0.45;
+    line-height:1.6;
+  }
+  .save-indicator{
+    font-size:11px;
+    color:var(--blush-bright);
+    opacity:0;
+    transition:opacity 0.3s;
+    margin-top:10px;
+    display:flex;
+    align-items:center;
+    gap:5px;
+  }
+  .save-indicator.show{ opacity:0.85; }
+
+  .main{ flex:1; padding:36px 44px; max-width:1000px; position:relative; }
+  .page-title-row{ display:flex; align-items:baseline; gap:10px; margin-bottom:2px; }
+  .page-title{
+    font-family:'Fraunces', serif;
+    font-size:27px;
+    font-weight:600;
+    color:var(--cream);
+    margin:0;
+  }
+  .title-flourish{
+    width:60px; height:10px; opacity:0.7; margin:8px 0 6px 0;
+  }
+  .page-sub{
+    color:var(--cream-dim);
+    opacity:0.6;
+    font-size:13px;
+    margin-bottom:26px;
+    font-style:italic;
+    font-family:'Fraunces', serif;
+  }
+
+  .banner{
+    background: rgba(168,67,61,0.15);
+    border:1px solid var(--danger);
+    color:#F4D9D9;
+    padding:10px 14px;
+    border-radius:8px;
+    font-size:13px;
+    margin-bottom:16px;
+  }
+
+  .card{
+    background: var(--cream);
+    color: var(--ink);
+    border-radius:14px;
+    padding:24px 26px;
+    margin-bottom:20px;
+    border: 1px solid rgba(0,0,0,0.06);
+    box-shadow: 0 1px 0 rgba(0,0,0,0.03), 0 8px 20px -14px rgba(16,26,44,0.35);
+    position:relative;
+    overflow:hidden;
+  }
+  .card::before{
+    content:'';
+    position:absolute;
+    top:0; left:0;
+    width:100%; height:3px;
+    background: linear-gradient(90deg, var(--gold), var(--blush) 85%);
+  }
+  .card-title{
+    font-family:'Fraunces', serif;
+    font-size:17.5px;
+    font-weight:600;
+    font-style:italic;
+    margin:0 0 16px 0;
+    color:var(--ink);
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .card-title::before{
+    content:'';
+    width:6px; height:6px;
+    border-radius:50%;
+    background: var(--blush-deep);
+    flex-shrink:0;
+  }
+
+  label{
+    display:block;
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:0.6px;
+    color:var(--ink-soft);
+    margin-bottom:5px;
+    font-weight:500;
+  }
+  input, select{
+    width:100%;
+    padding:9px 11px;
+    border-radius:8px;
+    border:1px solid rgba(0,0,0,0.15);
+    background:#fff;
+    font-family:'Inter', sans-serif;
+    font-size:14px;
+    color:var(--ink);
+  }
+  input:focus, select:focus{
+    outline:none;
+    border-color: var(--blush-deep);
+    box-shadow: 0 0 0 3px rgba(217,166,160,0.28);
+  }
+  .form-grid{ display:grid; grid-template-columns: repeat(4, 1fr); gap:14px; margin-bottom:16px; }
+  .form-grid.two{ grid-template-columns: repeat(2, 1fr); }
+  .full{ grid-column: 1 / -1; }
+  button{
+    font-family:'Inter', sans-serif;
+    font-weight:600;
+    font-size:13px;
+    padding:10px 20px;
+    border-radius:8px;
+    border:none;
+    background: linear-gradient(135deg, var(--navy), var(--navy-light));
+    color: var(--gold-bright);
+    cursor:pointer;
+    transition: transform 0.1s, box-shadow 0.15s;
+  }
+  button:hover{ box-shadow: 0 0 0 3px rgba(217,166,160,0.18); }
+  button:active{ transform: scale(0.98); }
+  button.ghost{ background:transparent; border:1px solid rgba(0,0,0,0.15); color:var(--ink-soft); }
+  button.ghost:hover{ background:rgba(217,166,160,0.08); box-shadow:none; }
+  button.small{ padding:6px 12px; font-size:12px; }
+  button.danger{ background: linear-gradient(135deg, #7A2E2E, var(--danger)); color:#F4D9D9; }
+
+  .toolbar{ display:flex; align-items:center; gap:12px; margin-bottom:20px; flex-wrap:wrap; }
+  .toolbar select, .toolbar input{ width:auto; min-width:150px; }
+  .seg{ display:flex; background: var(--cream-dim); border-radius:8px; padding:3px; gap:2px; }
+  .seg button{ background:transparent; color: var(--ink-soft); padding:7px 14px; font-weight:500; }
+  .seg button.active{ background: var(--navy); color: var(--gold-bright); }
+  .seg button:hover{ box-shadow:none; }
+
+  .stat-row{ display:grid; grid-template-columns: repeat(4, 1fr); gap:14px; margin-bottom:20px; }
+  .stat{ background:#fff; border-radius:10px; padding:14px 16px; border:1px solid rgba(0,0,0,0.06); }
+  .stat.over{ border-color: var(--danger); background: rgba(168,67,61,0.06); }
+  .stat-label{ font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--ink-soft); margin-bottom:6px; display:flex; align-items:center; gap:5px;}
+  .stat-value{ font-family:'IBM Plex Mono', monospace; font-size:22px; font-weight:600; color:var(--ink); }
+  .stat-value.good{ color: var(--good); }
+  .stat-value.warn{ color: var(--warn); }
+  .stat-value.over{ color: var(--danger); }
+  .flag{ color: var(--danger); font-size:13px; }
+
+  .chart-row{ display:grid; grid-template-columns: 260px 1fr; gap:28px; align-items:center; }
+  .chart-wrap{ position:relative; height:240px; }
+  .legend{ display:flex; flex-direction:column; gap:8px; }
+  .legend-item{ display:flex; align-items:center; justify-content:space-between; font-size:13px; padding:6px 0; border-bottom:1px solid rgba(0,0,0,0.06); }
+  .legend-left{ display:flex; align-items:center; gap:9px; }
+  .swatch{ width:11px; height:11px; border-radius:3px; flex-shrink:0; }
+  .legend-cat{ color:var(--ink); font-weight:500; }
+  .legend-amt{ font-family:'IBM Plex Mono', monospace; color:var(--ink-soft); font-size:12.5px; }
+
+  table{ width:100%; border-collapse:collapse; font-size:13px; }
+  th{ text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--ink-soft); padding:8px 10px; border-bottom:2px solid rgba(0,0,0,0.1); }
+  td{ padding:9px 10px; border-bottom:1px solid rgba(0,0,0,0.06); color:var(--ink); }
+  td.amt{ font-family:'IBM Plex Mono', monospace; text-align:right; }
+  tr:hover td{ background:rgba(217,166,160,0.08); }
+
+  .empty{ text-align:center; padding:30px 10px; color:var(--ink-soft); font-size:13px; }
+  .anything-box{ display:grid; grid-template-columns: repeat(4, 1fr); gap:14px; }
+  .hint{ font-size:12px; color:var(--ink-soft); margin-top:4px; }
+
+  .limit-rows{ display:flex; flex-direction:column; gap:10px; }
+  .limit-row{ display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:#fff; border-radius:10px; border:1px solid rgba(0,0,0,0.06); }
+  .limit-row.over{ border-color: var(--danger); background: rgba(168,67,61,0.06); }
+  .limit-name{ font-weight:600; display:flex; align-items:center; gap:8px; }
+  .limit-detail{ font-family:'IBM Plex Mono', monospace; font-size:13px; color:var(--ink-soft); }
+  .limit-detail.over{ color: var(--danger); font-weight:600; }
+
+  @media (max-width: 800px){
+    .app{ flex-direction:column; }
+    .sidebar{ width:100%; flex-direction:row; overflow-x:auto; padding:14px; }
+    .brand-row, .brand-sub, .sidebar-footer, .save-indicator{ display:none; }
+    .nav-item{ margin-bottom:0; white-space:nowrap; }
+    .main{ padding:20px; }
+    .form-grid, .stat-row, .anything-box{ grid-template-columns: repeat(2,1fr); }
+    .chart-row{ grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="sidebar">
+    <div class="brand-row">
+      <svg class="sprig" width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 21V9" stroke="#E0BC66" stroke-width="1.4" stroke-linecap="round"/><path d="M12 13c0-4 3-6 7-6-1 4-3 6-7 6z" fill="#D9A6A0" opacity="0.85"/><path d="M12 17c0-3.2-2.4-5-5.6-5C7.2 15.4 9 17 12 17z" fill="#C9A44C" opacity="0.85"/></svg>
+      <div class="brand">Ledger</div>
+    </div>
+    <div class="brand-sub">joint finances</div>
+
+    <div class="nav-item active" data-tab="add"><span class="nav-icon">✎</span> Add entry</div>
+    <div class="nav-item" data-tab="monthly"><span class="nav-icon">◐</span> Monthly</div>
+    <div class="nav-item" data-tab="yearly"><span class="nav-icon">▤</span> Yearly</div>
+    <div class="nav-item" data-tab="income"><span class="nav-icon">$</span> Income</div>
+    <div class="nav-item" data-tab="settings"><span class="nav-icon">⚙</span> Settings</div>
+
+    <div class="sidebar-footer">Shared with anyone who opens this page — entries sync automatically, in real time.</div>
+    <div class="save-indicator" id="save-indicator">✧ saved</div>
+  </div>
+
+  <div class="main" id="main"></div>
+</div>
+
+<script>
+const CATEGORIES = [
+  { id:'rent', label:'Rent', color:'#C9A44C' },
+  { id:'car', label:'Car expenses', color:'#7C9A92' },
+  { id:'groceries', label:'Groceries', color:'#5B8C77' },
+  { id:'eatingout', label:'Eating out', color:'#B5673E' },
+  { id:'coffee', label:'Coffee / matcha', color:'#8C6A4E' },
+  { id:'household', label:'Household', color:'#4C6B8A' },
+  { id:'personalcare', label:'Personal care', color:'#9B6B8C' },
+  { id:'utilities', label:'Utilities', color:'#6B8AA8' },
+  { id:'streaming', label:'Streaming subscriptions', color:'#A87C4C' },
+  { id:'pets', label:'Pets', color:'#7A8C4C' },
+  { id:'anything', label:'Anything', color:'#DDBB6E' },
+];
+const catById = id => CATEGORIES.find(c => c.id === id);
+const BOTH = 'Both';
+
+const todayISO = () => new Date().toISOString().slice(0,10);
+const thisMonth = () => new Date().toISOString().slice(0,7);
+const thisYear = () => new Date().getFullYear();
+const fmt = n => '$' + (Math.round((n||0)*100)/100).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2});
+const monthLabel = m => { const [y,mo]=m.split('-'); return new Date(y, mo-1, 1).toLocaleString('default',{month:'long', year:'numeric'}); };
+
+function defaultSettings(){
+  return {
+    name1:'Partner 1', name2:'Partner 2',
+    anythingBudget:200, startMonth: thisMonth(),
+    income: {}, personLimits: {}
+  };
+}
+let appData = { entries: [], settings: defaultSettings() };
+let loaded = false;
+let loadError = false;
+
+let ui = {
+  tab: 'add',
+  monthlyMonth: thisMonth(),
+  monthlyPerson: 'combined',
+  yearlyYear: thisYear(),
+  yearlyPerson: 'combined',
+};
+
+// ---------- persistence ----------
+// Fill in your own Firebase project config here (see setup instructions).
+// Until you do, the app still works, but nothing is saved between visits.
+const firebaseConfig = {
+  apiKey: "AIzaSyAKf91h-lBCyZOcpWTdmeePSJ7UFUUoerY",
+  authDomain: "financial-planner-786d1.firebaseapp.com",
+  projectId: "financial-planner-786d1",
+  storageBucket: "financial-planner-786d1.firebasestorage.app",
+  messagingSenderId: "591365805551",
+  appId: "1:591365805551:web:c5606a73c65cdc84da921a"
+};
+
+let db = null;
+let firebaseReady = false;
+try{
+  if(firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_API_KEY"){
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+    firebaseReady = true;
+  }
+}catch(e){
+  console.error('Ledger: Firebase failed to initialize', e);
+}
+
+const LEDGER_DOC = () => db.collection('ledger').doc('shared-data');
+
+let saveQueue = Promise.resolve();
+function saveData(){
+  showSaving();
+  if(!firebaseReady) return Promise.resolve(); // nothing to persist to yet
+  saveQueue = saveQueue
+    .then(()=> LEDGER_DOC().set(JSON.parse(JSON.stringify(appData))))
+    .catch(e=> console.error('Ledger: save failed', e));
+  return saveQueue;
+}
+function showSaving(){
+  const ind = document.getElementById('save-indicator');
+  if(!ind) return;
+  ind.classList.add('show');
+  clearTimeout(showSaving._t);
+  showSaving._t = setTimeout(()=> ind.classList.remove('show'), 1200);
+}
+
+function startSync(){
+  if(!firebaseReady){
+    loaded = true;
+    render();
+    return;
+  }
+  // onSnapshot fires immediately with current data, then again in real time
+  // whenever either partner adds something — from any device, any browser.
+  LEDGER_DOC().onSnapshot(doc=>{
+    if(doc.exists){
+      const parsed = doc.data();
+      appData = {
+        entries: Array.isArray(parsed.entries) ? parsed.entries : [],
+        settings: Object.assign(defaultSettings(), parsed.settings||{})
+      };
+      appData.settings.income = appData.settings.income || {};
+      appData.settings.personLimits = appData.settings.personLimits || {};
+    }
+    loaded = true;
+    render();
+  }, err=>{
+    console.error('Ledger: sync error', err);
+    loaded = true;
+    render();
+  });
+}
+
+function switchTab(tab){ ui.tab = tab; render(); }
+function el(html){ const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstChild; }
+
+// ---------- computation helpers ----------
+function entriesFor({month, year, person}){
+  return appData.entries.filter(e=>{
+    if(month && e.date.slice(0,7) !== month) return false;
+    if(year && e.date.slice(0,4) !== String(year)) return false;
+    if(person && person !== 'combined'){
+      if(e.person !== person && e.person !== BOTH) return false;
+    }
+    return true;
+  });
+}
+
+function categoryTotals(list){
+  const totals = {};
+  CATEGORIES.forEach(c => totals[c.id] = 0);
+  list.forEach(e => { totals[e.category] = (totals[e.category]||0) + Number(e.amount); });
+  return totals;
+}
+
+function incomeFor(){
+  // Income is always shown combined, regardless of which person's view is selected.
+  const inc = appData.settings.income || {};
+  return (Number(inc[appData.settings.name1])||0) + (Number(inc[appData.settings.name2])||0);
+}
+
+// spending fully attributed to one person: their solo entries + half of any "Both" entries
+function personSpent(person, {month, year}){
+  return appData.entries.reduce((sum,e)=>{
+    if(month && e.date.slice(0,7) !== month) return sum;
+    if(year && e.date.slice(0,4) !== String(year)) return sum;
+    if(e.person === person) return sum + Number(e.amount);
+    if(e.person === BOTH) return sum + Number(e.amount)/2;
+    return sum;
+  }, 0);
+}
+
+function allMonthsBetween(start, end){
+  const months = [];
+  let [sy,sm] = start.split('-').map(Number);
+  let [ey,em] = end.split('-').map(Number);
+  let y=sy, m=sm;
+  let guard = 0;
+  while((y < ey || (y===ey && m<=em)) && guard < 1200){
+    months.push(`${y}-${String(m).padStart(2,'0')}`);
+    m++; if(m>12){m=1;y++;}
+    guard++;
+  }
+  return months;
+}
+
+function anythingRollover(uptoMonth){
+  const start = appData.settings.startMonth || uptoMonth;
+  if(uptoMonth < start) return { rollover:0, spentThisMonth:0, allotted: Number(appData.settings.anythingBudget)||0 };
+  const months = allMonthsBetween(start, uptoMonth);
+  let rollover = 0;
+  let spentThisMonth = 0;
+  months.forEach(m=>{
+    const spent = appData.entries.filter(e=>e.category==='anything' && e.date.slice(0,7)===m)
+      .reduce((s,e)=>s+Number(e.amount),0);
+    if(m === uptoMonth) spentThisMonth = spent;
+    rollover += ((Number(appData.settings.anythingBudget)||0) - spent);
+  });
+  return { rollover, spentThisMonth, allotted: Number(appData.settings.anythingBudget)||0 };
+}
+
+// ---------- render dispatch ----------
+function render(){
+  const main = document.getElementById('main');
+  document.querySelectorAll('.nav-item').forEach(n=> n.classList.toggle('active', n.dataset.tab === ui.tab));
+
+  if(!loaded){ main.innerHTML = '<div class="page-title">Loading…</div>'; return; }
+
+  main.innerHTML = '';
+  if(!firebaseReady){
+    main.appendChild(el(`<div class="banner">⚠ This ledger isn't connected to a database yet, so nothing will be saved when you close the tab. Add your Firebase config near the top of the script — see the setup steps you were given.</div>`));
+  }
+  try{
+    if(ui.tab==='add'){ main.appendChild(buildAdd()); }
+    else if(ui.tab==='monthly'){ const {node, post} = buildMonthly(); main.appendChild(node); post(); }
+    else if(ui.tab==='yearly'){ const {node, post} = buildYearly(); main.appendChild(node); post(); }
+    else if(ui.tab==='income'){ main.appendChild(buildIncome()); }
+    else if(ui.tab==='settings'){ main.appendChild(buildSettings()); }
+  }catch(err){
+    console.error('Ledger render error', err);
+    main.innerHTML = `<div class="page-title">Something went sideways</div><div class="banner">This tab hit an error while rendering: ${(err && err.message) || err}. Try switching tabs, or check the browser console for details.</div>`;
+  }
+}
+
+function flourishSVG(){
+  return `<svg class="title-flourish" viewBox="0 0 60 10" xmlns="http://www.w3.org/2000/svg"><line x1="0" y1="5" x2="42" y2="5" stroke="#C9A44C" stroke-width="1"/><circle cx="48" cy="5" r="2.5" fill="#D9A6A0"/><line x1="52" y1="5" x2="60" y2="5" stroke="#C9A44C" stroke-width="1"/></svg>`;
+}
+
+// ---------- Add tab ----------
+function buildAdd(){
+  const s = appData.settings;
+  const wrap = el(`<div>
+    <div class="page-title-row"><div class="page-title">Add an expense</div></div>
+    ${flourishSVG()}
+    <div class="page-sub">Log a purchase into the shared ledger.</div>
+    <div class="card">
+      <div class="card-title">New entry</div>
+      <div class="form-grid">
+        <div>
+          <label>Who spent it</label>
+          <select id="f-person">
+            <option value="${s.name1}">${s.name1}</option>
+            <option value="${s.name2}">${s.name2}</option>
+            <option value="${BOTH}">Both</option>
+          </select>
+        </div>
+        <div>
+          <label>Category</label>
+          <select id="f-category">${CATEGORIES.map(c=>`<option value="${c.id}">${c.label}</option>`).join('')}</select>
+        </div>
+        <div><label>Amount</label><input id="f-amount" type="number" step="0.01" min="0" placeholder="0.00"></div>
+        <div><label>Date</label><input id="f-date" type="date" value="${todayISO()}"></div>
+        <div class="full"><label>Note (optional)</label><input id="f-note" type="text" placeholder="e.g. Trader Joe's run"></div>
+      </div>
+      <button id="f-submit">Add entry</button>
+    </div>
+    <div class="card">
+      <div class="card-title">Recent entries</div>
+      <div id="recent-table"></div>
+    </div>
+  </div>`);
+
+  wrap.querySelector('#f-submit').addEventListener('click', ()=>{
+    const person = wrap.querySelector('#f-person').value;
+    const category = wrap.querySelector('#f-category').value;
+    const amount = parseFloat(wrap.querySelector('#f-amount').value);
+    const date = wrap.querySelector('#f-date').value;
+    const note = wrap.querySelector('#f-note').value;
+    if(!amount || amount<=0 || !date) return;
+    appData.entries.push({ id: Date.now()+Math.random().toString(16).slice(2), person, category, amount, date, note });
+    saveData();
+    wrap.querySelector('#f-amount').value='';
+    wrap.querySelector('#f-note').value='';
+    renderRecent(wrap.querySelector('#recent-table'));
+  });
+
+  renderRecent(wrap.querySelector('#recent-table'));
+  return wrap;
+}
+
+function renderRecent(container){
+  const recent = [...appData.entries].sort((a,b)=> b.date.localeCompare(a.date) || String(b.id).localeCompare(String(a.id))).slice(0,10);
+  if(recent.length===0){ container.innerHTML = '<div class="empty">No entries yet — add your first one above.</div>'; return; }
+  container.innerHTML = `<table>
+    <tr><th>Date</th><th>Person</th><th>Category</th><th>Note</th><th style="text-align:right">Amount</th><th></th></tr>
+    ${recent.map(e=>`<tr>
+      <td>${e.date}</td><td>${e.person}</td><td>${catById(e.category)?.label||e.category}</td><td>${e.note||'—'}</td>
+      <td class="amt">${fmt(e.amount)}</td>
+      <td><button class="small ghost" data-del="${e.id}">Remove</button></td>
+    </tr>`).join('')}
+  </table>`;
+  container.querySelectorAll('[data-del]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      appData.entries = appData.entries.filter(e=>String(e.id) !== btn.dataset.del);
+      saveData();
+      renderRecent(container);
+    });
+  });
+}
+
+function personToggle(current, onChange){
+  const s = appData.settings;
+  const options = [ {key:'combined', label:'Combined'}, {key:s.name1, label:s.name1}, {key:s.name2, label:s.name2} ];
+  const seg = el(`<div class="seg">${options.map(o=>`<button data-p="${o.key}" class="${current===o.key?'active':''}">${o.label}</button>`).join('')}</div>`);
+  seg.querySelectorAll('button').forEach(b=> b.addEventListener('click', ()=> onChange(b.dataset.p)));
+  return seg;
+}
+
+// ---------- Monthly tab ----------
+function buildMonthly(){
+  const s = appData.settings;
+  const wrap = el(`<div>
+    <div class="page-title-row"><div class="page-title">Monthly view</div></div>
+    ${flourishSVG()}
+    <div class="page-sub">Spending broken down by category for the selected month.</div>
+    <div class="toolbar">
+      <input type="month" id="m-month" value="${ui.monthlyMonth}">
+      <div id="m-seg"></div>
+    </div>
+    <div class="card">
+      <div id="m-stats" class="stat-row"></div>
+      <div class="chart-row">
+        <div class="chart-wrap"><canvas id="m-chart" role="img" aria-label="Donut chart of spending by category for the selected month"></canvas></div>
+        <div class="legend" id="m-legend"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Spending limits</div>
+      <div class="limit-rows" id="m-limits"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">"Anything" allowance</div>
+      <div class="anything-box" id="m-anything"></div>
+      <div class="hint">Unspent allowance rolls forward automatically month to month.</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Entries this month</div>
+      <div id="m-table"></div>
+    </div>
+  </div>`);
+
+  wrap.querySelector('#m-month').addEventListener('change', e=>{ ui.monthlyMonth = e.target.value; render(); });
+  wrap.querySelector('#m-seg').appendChild(personToggle(ui.monthlyPerson, (p)=>{ ui.monthlyPerson=p; render(); }));
+
+  function post(){
+    const list = entriesFor({month: ui.monthlyMonth, person: ui.monthlyPerson});
+    const totals = categoryTotals(list);
+    const totalSpent = Object.values(totals).reduce((a,b)=>a+b,0);
+    const income = incomeFor(ui.monthlyPerson);
+    const pct = income>0 ? (totalSpent/income*100) : null;
+
+    let limitForSelection = null;
+    if(ui.monthlyPerson === 'combined'){
+      const l1 = s.personLimits[s.name1], l2 = s.personLimits[s.name2];
+      if(l1 || l2) limitForSelection = (Number(l1)||0) + (Number(l2)||0);
+    } else {
+      limitForSelection = s.personLimits[ui.monthlyPerson] || null;
+    }
+    const overLimit = limitForSelection != null && limitForSelection > 0 && totalSpent > limitForSelection;
+
+    wrap.querySelector('#m-stats').innerHTML = `
+      <div class="stat ${overLimit?'over':''}"><div class="stat-label">Total spent ${overLimit?'<span class=\"flag\">⚠</span>':''}</div><div class="stat-value ${overLimit?'over':''}">${fmt(totalSpent)}</div></div>
+      <div class="stat"><div class="stat-label">Income</div><div class="stat-value">${fmt(income)}</div></div>
+      <div class="stat"><div class="stat-label">% of income spent</div><div class="stat-value ${pct!==null && pct>100 ? 'warn':'good'}">${pct!==null ? Math.round(pct*10)/10+'%' : '—'}</div></div>
+      <div class="stat"><div class="stat-label">Remaining income</div><div class="stat-value ${income-totalSpent<0?'warn':'good'}">${fmt(income-totalSpent)}</div></div>
+    `;
+
+    drawDonut(wrap.querySelector('#m-chart'), totals, totalSpent);
+    wrap.querySelector('#m-legend').innerHTML = legendHTML(totals, totalSpent);
+
+    wrap.querySelector('#m-limits').innerHTML = [s.name1, s.name2].map(name=>{
+      const limit = Number(s.personLimits[name]) || 0;
+      const spent = personSpent(name, {month: ui.monthlyMonth});
+      const over = limit > 0 && spent > limit;
+      return `<div class="limit-row ${over?'over':''}">
+        <div class="limit-name">${over?'<span class="flag">⚠</span>':''} ${name}</div>
+        <div class="limit-detail ${over?'over':''}">${fmt(spent)} ${limit>0 ? `/ ${fmt(limit)} limit` : '(no limit set)'}</div>
+      </div>`;
+    }).join('');
+
+    const anyRoll = anythingRollover(ui.monthlyMonth);
+    const remainThisMonth = anyRoll.allotted - anyRoll.spentThisMonth;
+    wrap.querySelector('#m-anything').innerHTML = `
+      <div class="stat"><div class="stat-label">Monthly allotment</div><div class="stat-value">${fmt(anyRoll.allotted)}</div></div>
+      <div class="stat"><div class="stat-label">Spent this month</div><div class="stat-value">${fmt(anyRoll.spentThisMonth)}</div></div>
+      <div class="stat ${remainThisMonth<0?'over':''}"><div class="stat-label">Left this month</div><div class="stat-value ${remainThisMonth<0?'over':'good'}">${fmt(remainThisMonth)}</div></div>
+      <div class="stat"><div class="stat-label">Total saved (rollover)</div><div class="stat-value ${anyRoll.rollover<0?'warn':'good'}">${fmt(anyRoll.rollover)}</div></div>
+    `;
+
+    const tableContainer = wrap.querySelector('#m-table');
+    if(list.length===0){ tableContainer.innerHTML = '<div class="empty">No entries for this month.</div>'; }
+    else{
+      const sorted = [...list].sort((a,b)=>b.date.localeCompare(a.date));
+      tableContainer.innerHTML = `<table>
+        <tr><th>Date</th><th>Person</th><th>Category</th><th>Note</th><th style="text-align:right">Amount</th></tr>
+        ${sorted.map(e=>`<tr><td>${e.date}</td><td>${e.person}</td><td>${catById(e.category)?.label}</td><td>${e.note||'—'}</td><td class="amt">${fmt(e.amount)}</td></tr>`).join('')}
+      </table>`;
+    }
+  }
+
+  return { node: wrap, post };
+}
+
+// ---------- Yearly tab ----------
+function buildYearly(){
+  const s = appData.settings;
+  const wrap = el(`<div>
+    <div class="page-title-row"><div class="page-title">Yearly view</div></div>
+    ${flourishSVG()}
+    <div class="page-sub">Spending broken down by category across the year.</div>
+    <div class="toolbar">
+      <input type="number" id="y-year" value="${ui.yearlyYear}" style="max-width:110px;">
+      <div id="y-seg"></div>
+    </div>
+    <div class="card">
+      <div id="y-stats" class="stat-row"></div>
+      <div class="chart-row">
+        <div class="chart-wrap"><canvas id="y-chart" role="img" aria-label="Donut chart of spending by category for the selected year"></canvas></div>
+        <div class="legend" id="y-legend"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Spending limits (annualized)</div>
+      <div class="limit-rows" id="y-limits"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">"Anything" allowance</div>
+      <div class="anything-box" id="y-anything"></div>
+      <div class="hint">Shows the allowance saved by the end of December of this year.</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Monthly breakdown</div>
+      <div id="y-table"></div>
+    </div>
+  </div>`);
+
+  wrap.querySelector('#y-year').addEventListener('change', e=>{ ui.yearlyYear = parseInt(e.target.value)||thisYear(); render(); });
+  wrap.querySelector('#y-seg').appendChild(personToggle(ui.yearlyPerson, (p)=>{ ui.yearlyPerson=p; render(); }));
+
+  function post(){
+    const list = entriesFor({year: ui.yearlyYear, person: ui.yearlyPerson});
+    const totals = categoryTotals(list);
+    const totalSpent = Object.values(totals).reduce((a,b)=>a+b,0);
+    const incomeTotal = incomeFor(ui.yearlyPerson) * 12;
+    const pct = incomeTotal>0 ? (totalSpent/incomeTotal*100) : null;
+
+    let limitForSelection = null;
+    if(ui.yearlyPerson === 'combined'){
+      const l1 = s.personLimits[s.name1], l2 = s.personLimits[s.name2];
+      if(l1 || l2) limitForSelection = ((Number(l1)||0) + (Number(l2)||0)) * 12;
+    } else {
+      limitForSelection = s.personLimits[ui.yearlyPerson] ? Number(s.personLimits[ui.yearlyPerson])*12 : null;
+    }
+    const overLimit = limitForSelection != null && limitForSelection > 0 && totalSpent > limitForSelection;
+
+    wrap.querySelector('#y-stats').innerHTML = `
+      <div class="stat ${overLimit?'over':''}"><div class="stat-label">Total spent ${overLimit?'<span class=\"flag\">⚠</span>':''}</div><div class="stat-value ${overLimit?'over':''}">${fmt(totalSpent)}</div></div>
+      <div class="stat"><div class="stat-label">Total income</div><div class="stat-value">${fmt(incomeTotal)}</div></div>
+      <div class="stat"><div class="stat-label">% of income spent</div><div class="stat-value ${pct!==null && pct>100?'warn':'good'}">${pct!==null ? Math.round(pct*10)/10+'%' : '—'}</div></div>
+      <div class="stat"><div class="stat-label">Remaining income</div><div class="stat-value ${incomeTotal-totalSpent<0?'warn':'good'}">${fmt(incomeTotal-totalSpent)}</div></div>
+    `;
+
+    drawDonut(wrap.querySelector('#y-chart'), totals, totalSpent);
+    wrap.querySelector('#y-legend').innerHTML = legendHTML(totals, totalSpent);
+
+    wrap.querySelector('#y-limits').innerHTML = [s.name1, s.name2].map(name=>{
+      const limit = (Number(s.personLimits[name]) || 0) * 12;
+      const spent = personSpent(name, {year: ui.yearlyYear});
+      const over = limit > 0 && spent > limit;
+      return `<div class="limit-row ${over?'over':''}">
+        <div class="limit-name">${over?'<span class="flag">⚠</span>':''} ${name}</div>
+        <div class="limit-detail ${over?'over':''}">${fmt(spent)} ${limit>0 ? `/ ${fmt(limit)} limit` : '(no limit set)'}</div>
+      </div>`;
+    }).join('');
+
+    const dec = `${ui.yearlyYear}-12`;
+    const decRoll = anythingRollover(dec > thisMonth() ? thisMonth() : dec);
+    wrap.querySelector('#y-anything').innerHTML = `
+      <div class="stat"><div class="stat-label">Monthly allotment</div><div class="stat-value">${fmt(decRoll.allotted)}</div></div>
+      <div class="stat"><div class="stat-label">Annual allotment</div><div class="stat-value">${fmt(decRoll.allotted*12)}</div></div>
+      <div class="stat"><div class="stat-label">Spent this year</div><div class="stat-value">${fmt(totals.anything)}</div></div>
+      <div class="stat"><div class="stat-label">Total saved (rollover)</div><div class="stat-value ${decRoll.rollover<0?'warn':'good'}">${fmt(decRoll.rollover)}</div></div>
+    `;
+
+    const months = []; for(let mo=1; mo<=12; mo++){ months.push(`${ui.yearlyYear}-${String(mo).padStart(2,'0')}`); }
+    wrap.querySelector('#y-table').innerHTML = `<table>
+      <tr><th>Month</th><th style="text-align:right">Spent</th><th style="text-align:right">Income</th><th style="text-align:right">Difference</th></tr>
+      ${months.map(m=>{
+        const spent = entriesFor({month:m, person: ui.yearlyPerson}).reduce((sum,e)=>sum+Number(e.amount),0);
+        const inc = incomeFor(ui.yearlyPerson);
+        const diff = inc - spent;
+        return `<tr><td>${monthLabel(m)}</td><td class="amt">${fmt(spent)}</td><td class="amt">${fmt(inc)}</td><td class="amt" style="color:${diff<0?'var(--danger)':'var(--good)'}">${fmt(diff)}</td></tr>`;
+      }).join('')}
+    </table>`;
+  }
+
+  return { node: wrap, post };
+}
+
+// ---------- Income tab ----------
+function buildIncome(){
+  const s = appData.settings;
+  const wrap = el(`<div>
+    <div class="page-title-row"><div class="page-title">Income</div></div>
+    ${flourishSVG()}
+    <div class="page-sub">Set each partner's current income — it applies to every month until you change it.</div>
+    <div class="card">
+      <div class="card-title">Current income</div>
+      <div class="form-grid two">
+        <div><label>${s.name1}</label><input id="inc-1" type="number" step="0.01" min="0" value="${s.income[s.name1]||''}" placeholder="0.00"></div>
+        <div><label>${s.name2}</label><input id="inc-2" type="number" step="0.01" min="0" value="${s.income[s.name2]||''}" placeholder="0.00"></div>
+      </div>
+      <button id="inc-save">Save income</button>
+      <div class="hint">This is a running setting, not a monthly log — update it whenever income changes and it applies going forward (and retroactively across all months, since there's no history to track).</div>
+    </div>
+  </div>`);
+
+  wrap.querySelector('#inc-save').addEventListener('click', ()=>{
+    const v1 = parseFloat(wrap.querySelector('#inc-1').value) || 0;
+    const v2 = parseFloat(wrap.querySelector('#inc-2').value) || 0;
+    appData.settings.income[s.name1] = v1;
+    appData.settings.income[s.name2] = v2;
+    saveData();
+  });
+
+  return wrap;
+}
+
+// ---------- Settings tab ----------
+function buildSettings(){
+  const s = appData.settings;
+  const wrap = el(`<div>
+    <div class="page-title-row"><div class="page-title">Settings</div></div>
+    ${flourishSVG()}
+    <div class="page-sub">Names, spending limits, the shared allowance, and data controls.</div>
+    <div class="card">
+      <div class="card-title">Names</div>
+      <div class="form-grid two">
+        <div><label>Partner 1</label><input id="s-name1" value="${s.name1}"></div>
+        <div><label>Partner 2</label><input id="s-name2" value="${s.name2}"></div>
+      </div>
+      <button id="s-save-names">Save names</button>
+      <div class="hint">Renaming won't relabel past entries already saved under the old name.</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Spending limits</div>
+      <div class="form-grid two">
+        <div><label>${s.name1}'s monthly limit (optional)</label><input id="s-limit1" type="number" step="0.01" min="0" value="${s.personLimits[s.name1]||''}" placeholder="No limit"></div>
+        <div><label>${s.name2}'s monthly limit (optional)</label><input id="s-limit2" type="number" step="0.01" min="0" value="${s.personLimits[s.name2]||''}" placeholder="No limit"></div>
+      </div>
+      <button id="s-save-limits">Save limits</button>
+      <div class="hint">A red marker appears on the Monthly and Yearly tabs whenever someone goes over their limit.</div>
+    </div>
+    <div class="card">
+      <div class="card-title">"Anything" allowance</div>
+      <div class="form-grid two">
+        <div><label>Monthly allotment (household)</label><input id="s-budget" type="number" step="0.01" min="0" value="${s.anythingBudget}"></div>
+        <div><label>Rollover tracking starts</label><input id="s-start" type="month" value="${s.startMonth}"></div>
+      </div>
+      <button id="s-save-budget">Save allowance</button>
+      <div class="hint">Unused allotment each month is saved and carried forward starting from this month.</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Data</div>
+      <div class="hint" style="margin-bottom:12px;">This ledger is shared — anyone with the link sees the same data. Clearing it removes everything for both of you.</div>
+      <button class="danger" id="s-clear">Clear all data</button>
+    </div>
+  </div>`);
+
+  wrap.querySelector('#s-save-names').addEventListener('click', ()=>{
+    appData.settings.name1 = wrap.querySelector('#s-name1').value || 'Partner 1';
+    appData.settings.name2 = wrap.querySelector('#s-name2').value || 'Partner 2';
+    saveData();
+    render();
+  });
+  wrap.querySelector('#s-save-limits').addEventListener('click', ()=>{
+    const l1 = parseFloat(wrap.querySelector('#s-limit1').value);
+    const l2 = parseFloat(wrap.querySelector('#s-limit2').value);
+    appData.settings.personLimits[appData.settings.name1] = isNaN(l1) ? null : l1;
+    appData.settings.personLimits[appData.settings.name2] = isNaN(l2) ? null : l2;
+    saveData();
+  });
+  wrap.querySelector('#s-save-budget').addEventListener('click', ()=>{
+    appData.settings.anythingBudget = parseFloat(wrap.querySelector('#s-budget').value)||0;
+    appData.settings.startMonth = wrap.querySelector('#s-start').value || thisMonth();
+    saveData();
+  });
+  wrap.querySelector('#s-clear').addEventListener('click', ()=>{
+    if(confirm('Clear all entries and settings? This cannot be undone.')){
+      appData = { entries: [], settings: defaultSettings() };
+      saveData();
+      render();
+    }
+  });
+
+  return wrap;
+}
+
+// ---------- charts ----------
+let chartInstances = {};
+function drawDonut(canvas, totals, total){
+  if(!canvas) return;
+  const id = canvas.id;
+  if(chartInstances[id]){ chartInstances[id].destroy(); delete chartInstances[id]; }
+  const cats = CATEGORIES.filter(c => totals[c.id] > 0);
+  if(cats.length===0){ return; }
+  chartInstances[id] = new Chart(canvas, {
+    type:'doughnut',
+    data:{
+      labels: cats.map(c=>c.label),
+      datasets:[{ data: cats.map(c=>totals[c.id]), backgroundColor: cats.map(c=>c.color), borderColor: '#F8F3E9', borderWidth: 2 }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false, cutout:'62%',
+      plugins:{
+        legend:{ display:false },
+        tooltip:{ callbacks:{ label: ctx => `${ctx.label}: ${fmt(ctx.parsed)} (${Math.round(ctx.parsed/total*1000)/10}%)` } }
+      }
+    }
+  });
+}
+
+function legendHTML(totals, total){
+  const cats = CATEGORIES.filter(c=>totals[c.id]>0).sort((a,b)=>totals[b.id]-totals[a.id]);
+  if(cats.length===0) return '<div class="empty">No spending recorded for this period.</div>';
+  return cats.map(c=>{
+    const pct = total>0 ? Math.round(totals[c.id]/total*1000)/10 : 0;
+    return `<div class="legend-item">
+      <div class="legend-left"><span class="swatch" style="background:${c.color}"></span><span class="legend-cat">${c.label}</span></div>
+      <span class="legend-amt">${fmt(totals[c.id])} · ${pct}%</span>
+    </div>`;
+  }).join('');
+}
+
+document.querySelectorAll('.nav-item').forEach(item=> item.addEventListener('click', ()=> switchTab(item.dataset.tab)));
+
+startSync();
+</script>
+</body>
+</html>

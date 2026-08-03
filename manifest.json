@@ -1,0 +1,11 @@
+{
+  "name": "Ledger — Joint Finance Tracker",
+  "short_name": "Ledger",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#101A2C",
+  "theme_color": "#101A2C",
+  "icons": [
+    { "src": "icon.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
