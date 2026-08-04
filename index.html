@@ -98,6 +98,7 @@
   .legend-cat{ color:var(--ink); font-weight:500; }
   .legend-amt{ font-family:'IBM Plex Mono', monospace; color:var(--ink-soft); font-size:12.5px; }
 
+  .table-scroll{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
   table{ width:100%; border-collapse:collapse; font-size:13px; }
   th{ text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--ink-soft); padding:8px 10px; border-bottom:2px solid rgba(0,0,0,0.1); }
   td{ padding:9px 10px; border-bottom:1px solid rgba(0,0,0,0.06); color:var(--ink); }
@@ -137,6 +138,8 @@
     .form-grid.three{ grid-template-columns: repeat(2,1fr); }
     .chart-row, .anything-pair{ grid-template-columns: 1fr; }
     .limit-row{ flex-wrap:wrap; }
+    .card{ padding:18px 16px; }
+    table{ min-width:560px; }
   }
 </style>
 </head>
@@ -157,6 +160,7 @@
     <div class="nav-item" data-tab="yearly"><span class="nav-icon">▤</span> Yearly</div>
     <div class="nav-item" data-tab="income"><span class="nav-icon">$</span> Income</div>
     <div class="nav-item" data-tab="budgets"><span class="nav-icon">◧</span> Budgets</div>
+    <div class="nav-item" data-tab="separate"><span class="nav-icon">✂</span> Separate</div>
     <div class="nav-item" data-tab="settings"><span class="nav-icon">⚙</span> Settings</div>
 
     <div class="sidebar-footer">Entries sync automatically, in real time.</div>
@@ -181,8 +185,11 @@ const CATEGORIES = [
   { id:'streaming', label:'Streaming subscriptions', color:'#A87C4C' },
   { id:'pets', label:'Pets', color:'#7A8C4C' },
   { id:'anything', label:'Anything', color:'#DDBB6E' },
+  { id:'separate', label:'Separate expenses', color:'#8C8C8C' },
 ];
 const catById = id => CATEGORIES.find(c => c.id === id);
+const SEPARATE_PALETTE = ['#C9A44C','#7C9A92','#5B8C77','#B5673E','#8C6A4E','#4C6B8A','#9B6B8C','#6B8AA8','#A87C4C','#7A8C4C','#C08552','#6FA39A'];
+const SEPARATE_STOPWORDS = new Set(['the','and','for','with','from','was','this','that','our','my','his','her','a','an','of','to','in','on','at','is','it','we','i']);
 function categoriesByUsage(person){
   const counts = {};
   appData.entries.forEach(e=>{
@@ -195,7 +202,7 @@ function categoriesByUsage(person){
     return a.label.localeCompare(b.label);
   });
 }
-const NON_ANYTHING_CATS = CATEGORIES.filter(c => c.id !== 'anything');
+const NON_ANYTHING_CATS = CATEGORIES.filter(c => c.id !== 'anything' && c.id !== 'separate');
 const BOTH = 'Both';
 
 const todayISO = () => new Date().toISOString().slice(0,10);
@@ -373,6 +380,7 @@ function switchTab(tab){ ui.tab = tab; render(); }
 // ---------- computation helpers ----------
 function entriesFor({month, year, person}){
   return appData.entries.filter(e=>{
+    if(e.category === 'separate') return false;
     if(month && e.date.slice(0,7) !== month) return false;
     if(year && e.date.slice(0,4) !== String(year)) return false;
     if(person && person !== 'combined'){ if(e.person !== person && e.person !== BOTH) return false; }
@@ -517,6 +525,7 @@ function render(){
     else if(ui.tab==='yearly'){ const {node, post} = buildYearly(); main.appendChild(node); post(); }
     else if(ui.tab==='income'){ main.appendChild(buildIncome()); }
     else if(ui.tab==='budgets'){ const {node, post} = buildBudgets(); main.appendChild(node); post(); }
+    else if(ui.tab==='separate'){ const {node, post} = buildSeparate(); main.appendChild(node); post(); }
     else if(ui.tab==='settings'){ main.appendChild(buildSettings()); }
   }catch(err){
     console.error('Render error', err);
@@ -547,7 +556,7 @@ function buildAdd(){
         <div><label>Category</label><select id="f-category"></select></div>
         <div><label>Amount</label><input id="f-amount" type="number" step="0.01" min="0" placeholder="0.00"></div>
         <div><label>Date</label><input id="f-date" type="date" value="${todayISO()}"></div>
-        <div class="full"><label>Note (optional)</label><input id="f-note" type="text" placeholder="e.g. Trader Joe's run"></div>
+        <div class="full"><label id="f-note-label">Note (optional)</label><input id="f-note" type="text" placeholder="e.g. Trader Joe's run"><div class="hint" id="f-separate-hint" style="display:none;">"Separate expenses" are kept out of your Monthly, Yearly, and Budget tabs entirely — tracked instead in the Separate tab, by note.</div></div>
       </div>
       <button id="f-submit">Add entry</button>
     </div>
@@ -556,12 +565,21 @@ function buildAdd(){
 
   const personSelect = wrap.querySelector('#f-person');
   const categorySelect = wrap.querySelector('#f-category');
+  const noteLabel = wrap.querySelector('#f-note-label');
+  const separateHint = wrap.querySelector('#f-separate-hint');
+  function updateNoteRequirement(){
+    const isSeparate = categorySelect.value === 'separate';
+    noteLabel.textContent = isSeparate ? 'Note (required)' : 'Note (optional)';
+    separateHint.style.display = isSeparate ? 'block' : 'none';
+  }
   function refreshCategoryOptions(){
     const prev = categorySelect.value;
     categorySelect.innerHTML = categoriesByUsage(personSelect.value).map(c=>`<option value="${c.id}">${c.label}</option>`).join('');
     if(prev && CATEGORIES.some(c=>c.id===prev)) categorySelect.value = prev;
+    updateNoteRequirement();
   }
   personSelect.addEventListener('change', refreshCategoryOptions);
+  categorySelect.addEventListener('change', updateNoteRequirement);
   refreshCategoryOptions();
 
   wrap.querySelector('#f-submit').addEventListener('click', ()=>{
@@ -571,20 +589,22 @@ function buildAdd(){
     const date = wrap.querySelector('#f-date').value;
     const note = wrap.querySelector('#f-note').value;
     if(!amount || amount<=0 || !date) return;
+    if(category === 'separate' && !note.trim()){ alert('Separate expenses need a note describing them.'); return; }
     appData.entries.push({ id: Date.now()+Math.random().toString(16).slice(2), person, category, amount, date, note });
     saveData();
     wrap.querySelector('#f-amount').value=''; wrap.querySelector('#f-note').value='';
+    updateNoteRequirement();
     renderRecent(wrap.querySelector('#recent-table'));
   });
   renderRecent(wrap.querySelector('#recent-table'));
   return wrap;
 }
 function renderRecent(container){
-  const recent = [...appData.entries].sort((a,b)=> b.date.localeCompare(a.date) || String(b.id).localeCompare(String(a.id))).slice(0,10);
+  const recent = [...appData.entries].filter(e=>e.category!=='separate').sort((a,b)=> b.date.localeCompare(a.date) || String(b.id).localeCompare(String(a.id))).slice(0,10);
   if(recent.length===0){ container.innerHTML = '<div class="empty">No entries yet — add your first one above.</div>'; return; }
-  container.innerHTML = `<table><tr><th>Date</th><th>Person</th><th>Category</th><th>Note</th><th style="text-align:right">Amount</th><th></th></tr>
+  container.innerHTML = `<div class="table-scroll"><table><tr><th>Date</th><th>Person</th><th>Category</th><th>Note</th><th style="text-align:right">Amount</th><th></th></tr>
     ${recent.map(e=>`<tr><td>${e.date}</td><td>${e.person}</td><td>${catById(e.category)?.label||e.category}</td><td>${e.note||'—'}</td><td class="amt">${fmt(e.amount)}</td><td><button class="small ghost" data-del="${e.id}">Remove</button></td></tr>`).join('')}
-  </table>`;
+  </table></div>`;
   container.querySelectorAll('[data-del]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       appData.entries = appData.entries.filter(e=>String(e.id) !== btn.dataset.del);
@@ -673,9 +693,9 @@ function buildMonthly(){
     if(list.length===0){ tableContainer.innerHTML = '<div class="empty">No entries for this month.</div>'; }
     else{
       const sorted = [...list].sort((a,b)=>b.date.localeCompare(a.date));
-      tableContainer.innerHTML = `<table><tr><th>Date</th><th>Person</th><th>Category</th><th>Note</th><th style="text-align:right">Amount</th></tr>
+      tableContainer.innerHTML = `<div class="table-scroll"><table><tr><th>Date</th><th>Person</th><th>Category</th><th>Note</th><th style="text-align:right">Amount</th></tr>
         ${sorted.map(e=>`<tr><td>${e.date}</td><td>${e.person}</td><td>${catById(e.category)?.label}</td><td>${e.note||'—'}</td><td class="amt">${fmt(e.amount)}</td></tr>`).join('')}
-      </table>`;
+      </table></div>`;
     }
   }
   return { node: wrap, post };
@@ -722,14 +742,14 @@ function buildYearly(){
     wrap.querySelector('#y-anything').innerHTML = anythingCardsHTML(st1, st2, s.name1, s.name2);
 
     const months = []; for(let mo=1; mo<=12; mo++){ months.push(`${ui.yearlyYear}-${String(mo).padStart(2,'0')}`); }
-    wrap.querySelector('#y-table').innerHTML = `<table><tr><th>Month</th><th style="text-align:right">Spent</th><th style="text-align:right">Income</th><th style="text-align:right">Difference</th></tr>
+    wrap.querySelector('#y-table').innerHTML = `<div class="table-scroll"><table><tr><th>Month</th><th style="text-align:right">Spent</th><th style="text-align:right">Income</th><th style="text-align:right">Difference</th></tr>
       ${months.map(m=>{
         const spent = entriesFor({month:m, person: ui.yearlyPerson}).reduce((sum,e)=>sum+Number(e.amount),0);
         const inc = incomeFor();
         const diff = inc - spent;
         return `<tr><td>${monthLabel(m)}</td><td class="amt">${fmt(spent)}</td><td class="amt">${fmt(inc)}</td><td class="amt" style="color:${diff<0?'var(--danger)':'var(--good)'}">${fmt(diff)}</td></tr>`;
       }).join('')}
-    </table>`;
+    </table></div>`;
   }
   return { node: wrap, post };
 }
@@ -851,6 +871,117 @@ function buildBudgets(){
     `;
     drawAllocationChart(wrap.querySelector('#b-chart'), segments, denom);
     wrap.querySelector('#b-legend').innerHTML = allocationLegendHTML(segments, denom);
+  }
+
+  return { node: wrap, post };
+}
+
+// ---------- Separate expenses tab ----------
+function separateEntries(){ return appData.entries.filter(e=>e.category==='separate'); }
+function separateByNote(){
+  const map = {};
+  separateEntries().forEach(e=>{
+    const key = (e.note||'(no note)').trim();
+    map[key] = (map[key]||0) + Number(e.amount);
+  });
+  return Object.entries(map).map(([note,total])=>({note,total})).sort((a,b)=>b.total-a.total);
+}
+function separateChartSegments(){
+  const byNote = separateByNote();
+  const top = byNote.slice(0,10);
+  const rest = byNote.slice(10);
+  const restTotal = rest.reduce((s,r)=>s+r.total,0);
+  const segments = top.map((n,i)=>({label:n.note, value:n.total, color:SEPARATE_PALETTE[i%SEPARATE_PALETTE.length]}));
+  if(restTotal>0) segments.push({label:'Other notes', value:restTotal, color:'#B9AF94'});
+  return segments;
+}
+function separateByKeyword(){
+  const map = {};
+  separateEntries().forEach(e=>{
+    const words = (e.note||'').toLowerCase().replace(/[^a-z0-9\s']/g,'').split(/\s+/).filter(w=>w && w.length>1 && !SEPARATE_STOPWORDS.has(w));
+    [...new Set(words)].forEach(w=>{
+      if(!map[w]) map[w] = { total:0, count:0 };
+      map[w].total += Number(e.amount);
+      map[w].count += 1;
+    });
+  });
+  return Object.entries(map).map(([word,v])=>({word, total:v.total, count:v.count}));
+}
+
+function buildSeparate(){
+  const wrap = el(`<div>
+    <div class="page-title">Separate Expenses</div>${flourishSVG()}
+    <div class="page-sub">Kept apart from the shared budget entirely — tracked here by note instead of category.</div>
+    <div class="card">
+      <div id="sep-stats" class="stat-row" style="grid-template-columns: repeat(2,1fr);"></div>
+      <div class="chart-row"><div class="chart-wrap"><canvas id="sep-chart"></canvas></div><div class="legend" id="sep-legend"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Spending by keyword</div>
+      <div class="toolbar">
+        <input type="text" id="sep-filter" placeholder="Filter keywords…" style="min-width:200px;">
+        <div class="seg" id="sep-sort-seg">
+          <button data-sort="amount" class="active">By amount</button>
+          <button data-sort="alpha">A–Z</button>
+        </div>
+      </div>
+      <div id="sep-keyword-table"></div>
+      <div class="hint">Each word in a note counts once per entry, so a note like "vet visit for cat" contributes its amount to "vet," "visit," and "cat."</div>
+    </div>
+    <div class="card"><div class="card-title">All separate expenses</div><div id="sep-table"></div></div>
+  </div>`);
+
+  let sortMode = 'amount';
+  let filterText = '';
+
+  wrap.querySelector('#sep-filter').addEventListener('input', (e)=>{ filterText = e.target.value.toLowerCase(); renderKeywordTable(); });
+  wrap.querySelectorAll('#sep-sort-seg button').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      sortMode = btn.dataset.sort;
+      wrap.querySelectorAll('#sep-sort-seg button').forEach(b=>b.classList.toggle('active', b===btn));
+      renderKeywordTable();
+    });
+  });
+
+  function renderKeywordTable(){
+    let rows = separateByKeyword();
+    if(filterText) rows = rows.filter(r=>r.word.includes(filterText));
+    rows.sort((a,b)=> sortMode==='amount' ? b.total-a.total : a.word.localeCompare(b.word));
+    const container = wrap.querySelector('#sep-keyword-table');
+    if(rows.length===0){ container.innerHTML = '<div class="empty">No keywords yet — add a separate expense with a note to see this.</div>'; return; }
+    container.innerHTML = `<div class="table-scroll"><table><tr><th>Keyword</th><th style="text-align:right">Total spent</th><th style="text-align:right">Entries</th></tr>
+      ${rows.map(r=>`<tr><td>${r.word}</td><td class="amt">${fmt(r.total)}</td><td class="amt">${r.count}</td></tr>`).join('')}
+    </table></div>`;
+  }
+
+  function post(){
+    const entries = separateEntries();
+    const total = entries.reduce((s,e)=>s+Number(e.amount),0);
+    wrap.querySelector('#sep-stats').innerHTML = `
+      <div class="stat"><div class="stat-label">Total spent</div><div class="stat-value">${fmt(total)}</div></div>
+      <div class="stat"><div class="stat-label">Entries</div><div class="stat-value">${entries.length}</div></div>
+    `;
+    const segments = separateChartSegments();
+    drawAllocationChart(wrap.querySelector('#sep-chart'), segments, total);
+    wrap.querySelector('#sep-legend').innerHTML = allocationLegendHTML(segments, total);
+
+    renderKeywordTable();
+
+    const sortedEntries = [...entries].sort((a,b)=>b.date.localeCompare(a.date));
+    const tableContainer = wrap.querySelector('#sep-table');
+    if(sortedEntries.length===0){ tableContainer.innerHTML = '<div class="empty">No separate expenses logged yet.</div>'; }
+    else{
+      tableContainer.innerHTML = `<div class="table-scroll"><table><tr><th>Date</th><th>Person</th><th>Note</th><th style="text-align:right">Amount</th><th></th></tr>
+        ${sortedEntries.map(e=>`<tr><td>${e.date}</td><td>${e.person}</td><td>${e.note||'—'}</td><td class="amt">${fmt(e.amount)}</td><td><button class="small ghost" data-del="${e.id}">Remove</button></td></tr>`).join('')}
+      </table></div>`;
+      tableContainer.querySelectorAll('[data-del]').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          appData.entries = appData.entries.filter(e=>String(e.id)!==btn.dataset.del);
+          saveData();
+          render();
+        });
+      });
+    }
   }
 
   return { node: wrap, post };
